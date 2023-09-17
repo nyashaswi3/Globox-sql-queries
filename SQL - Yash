@@ -101,7 +101,10 @@ SELECT
  LEFT JOIN activity a ON u.id = a.uid
  GROUP BY u.id, u.country, u.gender, g.group,g.device,converted ;
 
------Date difference---converted_users
+
+
+-----------Advanced Task-----------
+-----Date difference for converted_users-----
 SELECT DT.group, COUNT(DT.user_id), DT.date_difference
 FROM(SELECT 
            a.uid AS user_id, 
