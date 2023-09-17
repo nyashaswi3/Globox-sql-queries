@@ -1,0 +1,159 @@
+---Question1 ---Can a user show up more than once in the activity table? Yes or no, and why?
+SELECT uid, count(*)
+FROM activity 
+GROUP BY uid
+HAVING count(*) > 1
+---Answer, Yes a user can show up more than once in the activity table.
+
+---Question2---What type of join should we use to join the users table to the activity table?
+SELECT u.* , a.*
+FROM users AS u
+LEFT JOIN  activity  AS a
+on a.uid = u.id
+
+---Question3---What SQL function can we use to fill in NULL values?
+SELECT COALESCE(column_name, 'Default Value') AS filled_column
+FROM your_table;
+In this example, if the "column_name" contains NULL values, 
+the COALESCE function will replace them with the 'Default Value'. If the "column_name" already has non-NULL values, they will be displayed as is.
+
+SELECT uid, COALESCE(device, 'Unknown') AS null_devices
+FROM activity;
+The COALESCE() function allows you to return the first non-NULL expression in a list of expressions. If all expressions are NULL, it returns NULL.
+
+
+---Question4---What are the start and end dates of the experiment?
+SELECT MIN(join_dt)AS START_DATE, MAX(join_dt) AS end_date
+FROM groups 
+/* Start_date - 2023-01-25 , End_date - 2023-02-06.*/
+
+---Question5---How many total users were in the experiment?
+SELECT COUNT(DISTINCT(uid))
+FROM groups;
+/* Answer - 48,943 is the total users in the experiment.
+
+---Question6---How many users were in the control and treatment groups?
+SELECT g.group , COUNT(DISTINCT uid) AS total_users
+FROM groups as g
+GROUP BY g.group;
+/* Answer- Control - 24,343 and  Treatment - 24,600 .*/
+
+---Question7---What was the conversion rate of all users?
+SELECT
+  COUNT(DISTINCT CASE WHEN a.spent > 0 THEN a.uid END) * 100.0 / COUNT(DISTINCT u.id) AS conversion_rate
+FROM users u
+LEFT JOIN activity a ON u.id = a.uid;
+/* Answer - conversion_rate for all the users is 4.278 .
+
+---Question8---What is the user conversion rate for the control and treatment groups?
+SELECT
+  g.group,COUNT(DISTINCT CASE WHEN a.spent > 0 THEN a.uid END) * 100.0 / COUNT(DISTINCT u.id) AS conversion_rate
+FROM users u
+LEFT JOIN activity a ON u.id = a.uid
+LEFT JOIN groups g ON u.id = g.uid
+GROUP BY g.group
+/* Answer - the conversion rate for CONTROL = 3.9230990428459927 and TREATMENT = 4.6300813008130081 */
+
+---Question9 - What is the average amount spent per user for the control and treatment groups, including users who did not convert?
+WITH control_group_spent_cte AS (
+SELECT u.id AS user_id, COALESCE(SUM(a.spent), 0) AS total_spent
+FROM users u
+JOIN groups g ON u.id = g.uid AND g.group = 'A'
+LEFT JOIN activity a ON u.id = a.uid
+GROUP BY u.id
+),
+
+treatment_group_spent_cte AS (
+SELECT
+u.id AS user_id,
+COALESCE(SUM(a.spent), 0) AS total_spent
+FROM users u
+JOIN groups g ON u.id = g.uid AND g.group = 'B'
+LEFT JOIN activity a ON u.id = a.uid
+GROUP BY u.id)
+
+
+SELECT  'CONTROL' AS group_name,
+AVG(cg.total_spent) AS avg_amount_spent_per_user
+FROM control_group_spent_cte cg
+UNION ALL
+SELECT 'TREATMENT' AS group_name,
+AVG(tg.total_spent) AS avg_amount_spent_per_user
+FROM treatment_group_spent_cte tg;
+
+/* Answer - The AVG(CONTROL) - 3.37 , The AVG(TREATMENT) - 3.39 */
+
+
+---Question10 -  Write a SQL query that returns: the user ID, the user’s country, the user’s gender, 
+the user’s device type, the user’s test group, 
+whether or not they converted (spent > $0), and how much they spent in total ($0+).
+
+SELECT 
+  distinct u.id,
+  u.country,
+  u.gender,
+  g.group AS test_group,
+  g.device,
+  SUM(COALESCE(a.spent,0.00)) as total_spent,
+  CASE WHEN a.spent>0 THEN 1 ELSE 0 END as converted
+ FROM users u
+ LEFT JOIN groups g ON u.id = g.uid
+ LEFT JOIN activity a ON u.id = a.uid
+ GROUP BY u.id, u.country, u.gender, g.group,g.device,converted ;
+
+-----Date difference---converted_users
+SELECT DT.group, COUNT(DT.user_id), DT.date_difference
+FROM(SELECT 
+           a.uid AS user_id, 
+     g.group,
+     g.join_dt AS date_registered,
+     a.dt AS date_converted,
+     SUM(COALESCE(a.spent, 0)) AS total_spent_usd,
+     a.dt - g.join_dt AS date_difference
+      FROM groups AS g
+JOIN activity AS a
+ON g.uid = a.uid
+GROUP BY 1,2,3,4) AS DT
+GROUP BY 1,3
+ORDER BY 3;
+
+---Novelty Effect Query:---Join Date
+SELECT 
+      g.join_dt AS join_date, 
+      g.group,
+      COUNT(DISTINCT g.uid) AS total_users,
+      COUNT(DISTINCT a.uid) AS paid_users,
+      SUM(a.spent) AS total_spent
+FROM 
+    groups AS g
+LEFT JOIN activity AS a ON g.uid = a.uid
+GROUP BY 
+        g.group,
+        g.join_dt
+ORDER BY g.join_dt;
+-----Joining everything with Date
+SELECT 
+      DT.join_date,
+      DT.group,
+      ROUND(CAST(SUM(DT.paid_users) / MAX(DT.total_users) * 100 AS
+      DECIMAL(10,2)), 2) AS conversion_rate,
+      ROUND(CAST(SUM(DT.total_spent)/MAX(DT.total_users) AS DECIMAL(10,2)),2) AS 
+      average_spent
+FROM(SELECT 
+           g.join_dt AS join_date, 
+           g.group,
+           COUNT(DISTINCT g.uid) AS total_users,
+           COUNT(DISTINCT a.uid) AS paid_users,
+           SUM(a.spent) AS total_spent
+      FROM 
+           groups AS g
+      LEFT JOIN activity AS a ON g.uid = a.uid
+      GROUP BY 
+              g.group,
+              g.join_dt
+      ORDER BY g.join_dt) AS DT
+GROUP BY DT.join_date, DT.group;
+
+
+
+
